@@ -9,9 +9,25 @@ function App() {
   const [finishState, setfinishState] = useState(false)
   useEffect(() => {
     // console.log(gamestate)
+    console.log(checkWinner())
+    const winner = checkWinner()
+    if(winner == 'circle' || winner == 'cross'){
+      setfinishState(true)
+    }
   }, [gamestate])
-  const checkWinnder=()=>{
-    
+  const checkWinner=()=>{
+    for(let row = 0;row<gamestate.length;row++){
+      // checking only for rows
+      if((gamestate[row][0] == gamestate[row][1]) && (gamestate[row][0] == gamestate[row][2])){
+        return gamestate[row][0];
+      }
+    }
+    for(let col = 0;col<gamestate.length;col++){
+      // checking only for col
+      if((gamestate[0][col] == gamestate[1][col]) && (gamestate[0][col] == gamestate[2][col])){
+        return gamestate[1][col];
+      }
+    }
   }
   return (
    <div className='flex mt-5 justify-center items-center'>

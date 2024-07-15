@@ -59,7 +59,7 @@ const Square = ({id,currentPlayer,setcurrentPlayer,setgamestate,finishState,setf
       const rowIndex = Math.floor(id/3);
       const colIndex = Math.floor(id%3);
       newState[rowIndex][colIndex] = myCurrentPlayer
-      console.log(newState)
+      // console.log(newState)
       return newState
     })
   }
