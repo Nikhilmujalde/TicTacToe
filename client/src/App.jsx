@@ -1,90 +1,225 @@
-import { useEffect, useState } from 'react';
-import Square from '../components/Square.jsx';
+import React, { useState, useEffect } from "react";
+import "./App.css";
+import Square from "./Square/Square";
+import { io } from "socket.io-client";
+import Swal from "sweetalert2";
 
-function App() {
-  const renderFrom = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-  const [gamestate, setgamestate] = useState(renderFrom);
-  const [currentPlayer, setcurrentPlayer] = useState('circle');
-  const [finishState, setfinishState] = useState(null);
-  const [finishedArrayState, setfinishedArrayState] = useState([]);
-  const [playOnline, setplayOnline] = useState(false)
+const renderFrom = [
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9],
+];
+
+const App = () => {
+  const [gameState, setGameState] = useState(renderFrom);
+  const [currentPlayer, setCurrentPlayer] = useState("circle");
+  const [finishedState, setFinishetState] = useState(false);
+  const [finishedArrayState, setFinishedArrayState] = useState([]);
+  const [playOnline, setPlayOnline] = useState(false);
+  const [socket, setSocket] = useState(null);
+  const [playerName, setPlayerName] = useState("");
+  const [opponentName, setOpponentName] = useState(null);
+  const [playingAs, setPlayingAs] = useState(null);
+
+  const checkWinner = () => {
+    // row dynamic
+    for (let row = 0; row < gameState.length; row++) {
+      if (
+        gameState[row][0] === gameState[row][1] &&
+        gameState[row][1] === gameState[row][2]
+      ) {
+        setFinishedArrayState([row * 3 + 0, row * 3 + 1, row * 3 + 2]);
+        return gameState[row][0];
+      }
+    }
+
+    // column dynamic
+    for (let col = 0; col < gameState.length; col++) {
+      if (
+        gameState[0][col] === gameState[1][col] &&
+        gameState[1][col] === gameState[2][col]
+      ) {
+        setFinishedArrayState([0 * 3 + col, 1 * 3 + col, 2 * 3 + col]);
+        return gameState[0][col];
+      }
+    }
+
+    if (
+      gameState[0][0] === gameState[1][1] &&
+      gameState[1][1] === gameState[2][2]
+    ) {
+      return gameState[0][0];
+    }
+
+    if (
+      gameState[0][2] === gameState[1][1] &&
+      gameState[1][1] === gameState[2][0]
+    ) {
+      return gameState[0][2];
+    }
+
+    const isDrawMatch = gameState.flat().every((e) => {
+      if (e === "circle" || e === "cross") return true;
+    });
+
+    if (isDrawMatch) return "draw";
+
+    return null;
+  };
 
   useEffect(() => {
     const winner = checkWinner();
     if (winner) {
-      setfinishState(winner);
+      setFinishetState(winner);
     }
-  }, [gamestate]);
+  }, [gameState]);
 
-  const checkWinner = () => {
-    for (let row = 0; row < gamestate.length; row++) {
-      if (gamestate[row][0] === gamestate[row][1] && gamestate[row][0] === gamestate[row][2]) {
-        setfinishedArrayState([row * 3, row * 3 + 1, row * 3 + 2]);
-        return gamestate[row][0];
-      }
-    }
-    for (let col = 0; col < gamestate.length; col++) {
-      if (gamestate[0][col] === gamestate[1][col] && gamestate[0][col] === gamestate[2][col]) {
-        setfinishedArrayState([col, col + 3, col + 6]);
-        return gamestate[0][col];
-      }
-    }
-    if (gamestate[0][0] === gamestate[1][1] && gamestate[0][0] === gamestate[2][2]) {
-      setfinishedArrayState([0, 4, 8]);
-      return gamestate[0][0];
-    }
-    if (gamestate[0][2] === gamestate[1][1] && gamestate[0][2] === gamestate[2][0]) {
-      setfinishedArrayState([2, 4, 6]);
-      return gamestate[0][2];
-    }
+  const takePlayerName = async () => {
+    const result = await Swal.fire({
+      title: "Enter your name",
+      input: "text",
+      showCancelButton: true,
+      inputValidator: (value) => {
+        if (!value) {
+          return "You need to write something!";
+        }
+      },
+    });
 
-    let count = 0;
-    for (let row = 0; row < gamestate.length; row++) {
-      for (let col = 0; col < gamestate.length; col++) {
-        if (gamestate[row][col] === 'circle' || gamestate[row][col] === 'cross') count++;
-      }
-    }
-    if (count === 9) return 'draw';
-    return null;
+    return result;
   };
-  if(!playOnline){
-    return <div className='flex mt-80 justify-center  items-center'>
-      <button className='bg-[#E4CA56] text-black text-6xl font-bold cursor-pointer rounded-lg p-4'>Play online</button>
-    </div>
+
+  socket?.on("opponentLeftMatch", () => {
+    setFinishetState("opponentLeftMatch");
+  });
+
+  socket?.on("playerMoveFromServer", (data) => {
+    const id = data.state.id;
+    setGameState((prevState) => {
+      let newState = [...prevState];
+      const rowIndex = Math.floor(id / 3);
+      const colIndex = id % 3;
+      newState[rowIndex][colIndex] = data.state.sign;
+      return newState;
+    });
+    setCurrentPlayer(data.state.sign === "circle" ? "cross" : "circle");
+  });
+
+  socket?.on("connect", function () {
+    setPlayOnline(true);
+  });
+
+  socket?.on("OpponentNotFound", function () {
+    setOpponentName(false);
+  });
+
+  socket?.on("OpponentFound", function (data) {
+    setPlayingAs(data.playingAs);
+    setOpponentName(data.opponentName);
+  });
+
+  async function playOnlineClick() {
+    const result = await takePlayerName();
+
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    const username = result.value;
+    setPlayerName(username);
+
+    const newSocket = io("http://localhost:3000", {
+      autoConnect: true,
+    });
+
+    newSocket?.emit("request_to_play", {
+      playerName: username,
+    });
+
+    setSocket(newSocket);
   }
+
+  if (!playOnline) {
+    return (
+      <div className="main-div">
+        <button onClick={playOnlineClick} className="playOnline">
+          Play Online
+        </button>
+      </div>
+    );
+  }
+
+  if (playOnline && !opponentName) {
+    return (
+      <div className="waiting">
+        <p>Waiting for opponent</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex mt-5 justify-center items-center">
-      <div>
-        <div className="move-detection flex justify-between mb-6">
-          <div className="left h-[60px] text-center flex justify-center items-center rounded-lg w-[120px] text-xl bg-red-800">Yourself</div>
-          <div className="right rounded-xl h-[60px] w-[120px] flex justify-center items-center text-xl bg-red-800">Opponent</div>
+    <div className="main-div">
+      <div className="move-detection">
+        <div
+          className={`left ${
+            currentPlayer === playingAs ? "current-move-" + currentPlayer : ""
+          }`}
+        >
+          {playerName}
         </div>
-        <h1 className="bg-[#4B495F] px-7 rounded-lg py-4 text-center font-semibold mb-10 text-3xl">Tic Tac Toe</h1>
-        <div className={`grid grid-cols-3 gap-6 ${finishState ? 'hover:cursor-not-allowed' : 'hover:cursor-pointer'}`}>
-          {gamestate.map((arr, rowIndex) => arr.map((e, colIndex) => (
-            <Square
-              id={rowIndex * 3 + colIndex}
-              finishedArrayState={finishedArrayState}
-              currentPlayer={currentPlayer}
-              setcurrentPlayer={setcurrentPlayer}
-              setgamestate={setgamestate}
-              finishState={finishState}
-              setfinishState={setfinishState}
-              key={rowIndex * 3 + colIndex}
-            />
-          )))}
-        </div>
-        <div>
-          {finishState && finishState === 'draw' && (
-            <p className="text-3xl mt-3 text-center font-semibold">The game is a draw</p>
-          )}
-          {finishState && finishState !== 'draw' && (
-            <p className="text-3xl mt-3 text-center font-semibold">{finishState} won the game</p>
-          )}
+        <div
+          className={`right ${
+            currentPlayer !== playingAs ? "current-move-" + currentPlayer : ""
+          }`}
+        >
+          {opponentName}
         </div>
       </div>
+      <div>
+        <h1 className="game-heading water-background">Tic Tac Toe</h1>
+        <div className="square-wrapper">
+          {gameState.map((arr, rowIndex) =>
+            arr.map((e, colIndex) => {
+              return (
+                <Square
+                  socket={socket}
+                  playingAs={playingAs}
+                  gameState={gameState}
+                  finishedArrayState={finishedArrayState}
+                  finishedState={finishedState}
+                  currentPlayer={currentPlayer}
+                  setCurrentPlayer={setCurrentPlayer}
+                  setGameState={setGameState}
+                  id={rowIndex * 3 + colIndex}
+                  key={rowIndex * 3 + colIndex}
+                  currentElement={e}
+                />
+              );
+            })
+          )}
+        </div>
+        {finishedState &&
+          finishedState !== "opponentLeftMatch" &&
+          finishedState !== "draw" && (
+            <h3 className="finished-state">
+              {finishedState === playingAs ? "You " : finishedState} won the
+              game
+            </h3>
+          )}
+        {finishedState &&
+          finishedState !== "opponentLeftMatch" &&
+          finishedState === "draw" && (
+            <h3 className="finished-state">It's a Draw</h3>
+          )}
+      </div>
+      {!finishedState && opponentName && (
+        <h2>You are playing against {opponentName}</h2>
+      )}
+      {finishedState && finishedState === "opponentLeftMatch" && (
+        <h2>You won the match, Opponent has left</h2>
+      )}
     </div>
   );
-}
+};
 
 export default App;
